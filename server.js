@@ -4,21 +4,22 @@ const router = require('./router');
 const fs = require('fs');
 const url = require('url');
 const request = require('request');
+const axios = require('axios');
 
 require.extensions['.txt'] = function (module, filename) {
   module.exports = fs.readFileSync(filename, 'utf8');
 };
 
 function cssPropertiesParser(cssTxt, isDiff)  {
-  let regex = isDiff ? /(?:\+?.*(\.\S+)\s+{)\n(?:.*;\n)*(?:\+ .*;)/gm : /.*(\.\S+)\s+{/gm;
+  let regex = isDiff ? /(?:\+?.*(\.[^{, .]+)\s+(?:{|,))\n(?:.*;\n)*(?:\+ .*;)/gm : /(?:(\.[^.{ ,]+)\s*(?:{|,))/gm;
 
   let properties = [];
 
   while ((match = regex.exec(cssTxt)) !== null) {
     properties.push(match[1]);
   }
-  
-  return properties.toString();
+
+  return properties;
 }
 
 // Handle your routes here, put static pages in ./public and they will server
@@ -33,12 +34,11 @@ router.register('/parseDiff', function(req, res) {
   let diffText = require('./diff.txt');
 
   res.writeHead(200, {'Content-Type': 'text/plain'});
-  res.write(cssPropertiesParser(diffText, true));
+  res.write(cssPropertiesParser(diffText, true).toString());
   res.end();
 });
 
 router.register('/affectedSmallApps', function(req, res) {
-  let diffText = require('./diff.txt');
 
   let smallApps = require('./smallApps.json');
 
@@ -74,6 +74,58 @@ router.register('/smallAppCustomCss', function(req, res) {
       res.end();
     }
   }
+});
+
+router.register('/compareCss', function(req, res) {
+  let smallApps = require('./smallApps.json');
+  let diffText = require('./diff.txt');
+  let smallAppsInfos = [];
+
+  let diffPropsArray = cssPropertiesParser(diffText, true)
+  
+  axios.all(smallApps.map((smallApp) => axios.get(`https://api-demo-staging.toucantoco.com/${smallApp.id}/assets/styles/variables`))).then((resp) =>
+  {
+    resp.forEach((data, index) => {
+      if (data.data && data.data.specific) {
+        console.log(smallApps[index].id)
+        smallAppsInfos.push({name: smallApps[index].id, properties: cssPropertiesParser(data.data.specific, false)});
+      }
+    })
+
+
+    let matchingProperties = [];
+
+    for (let smallAppInfos of smallAppsInfos) {
+      for (let smallAppCssProp of smallAppInfos.properties) {
+        if (diffPropsArray.some((diffProp) => diffProp === smallAppCssProp)) {
+          if (!matchingProperties[smallAppInfos.name]) {
+            matchingProperties[smallAppInfos.name] = [];
+          }
+          matchingProperties[smallAppInfos.name].push(smallAppCssProp);
+        }
+      }
+    }
+
+    let finalText = `This PR has no impact on any custom CSS (I Hope !)`;
+    if (Object.keys(matchingProperties).length > 0) {
+      finalText = `This PR impacts:<br/>`;
+
+
+      for (let [key, value] of Object.entries(matchingProperties)) {
+        finalText += `<div style="color: red; margin-bottom: 10px; padding: 20px;">${key}`
+        value.forEach((property) => {
+          finalText += `<div style="color: black; margin: 5px 10px;">${property}</div>`;
+        })
+        finalText += `</div>`;
+      }
+    }
+
+    res.writeHead(200, {'Content-Type': 'text/html'});
+    res.write(finalText);
+    res.end();
+  }).catch(err => {
+    console.log(err);
+  })
 });
 
 // We need a server which relies on our router

@@ -1,8 +1,8 @@
 diff --git a/machin.css b/machin.css
-index 93b24fd..ad87416 100644
+index 93b24fd..aec367b 100644
 --- a/machin.css
 +++ b/machin.css
-@@ -4,6 +4,9 @@
+@@ -4,9 +4,12 @@
  .b {
    background: yellow;
  }
@@ -11,4 +11,8 @@ index 93b24fd..ad87416 100644
 +}
  .c {
    background: blue;
+ }
+ .d {
+-  background: green;
++  background: purple;
  }

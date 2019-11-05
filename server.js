@@ -44,8 +44,15 @@ router.register('/', function(req, res) {
   res.end();
 });
 
-// Handle your routes here, put static pages in ./public and they will server
-router.register('/parseDiff', function(req, res) {
+router.register('/file', function(req, res) {
+  let diffText = require('./diff.txt');
+
+  res.writeHead(200, {'Content-Type': 'text/plain'});
+  res.write(diffText);
+  res.end();
+});
+
+router.register('/diff', function(req, res) {
   let diffText = require('./diff.txt');
 
   res.writeHead(200, {'Content-Type': 'text/plain'});
@@ -53,20 +60,20 @@ router.register('/parseDiff', function(req, res) {
   res.end();
 });
 
-router.register('/affectedSmallApps', function(req, res) {
+router.register('/smallApps', function(req, res) {
 
   let smallApps = require('./smallApps.json');
 
   res.writeHead(200, {'Content-Type': 'text/html'});
   res.write(
     `<body>${smallApps.reduce((acc, smallApp) => {
-      return acc + `<a href="/smallAppCustomCss?name=${smallApp.id}">${smallApp.id}</a><br/>`;
+      return acc + `<a href="/customCss?name=${smallApp.id}">${smallApp.id}</a><br/>`;
     }, '')}</body>`
   );
   res.end();
 });
 
-router.register('/smallAppCustomCss', function(req, res) {
+router.register('/customCss', function(req, res) {
   const res2 = res;
   if (req.method === 'GET') {
     const currentUrl = new url.parse(req.url);

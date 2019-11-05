@@ -11,7 +11,7 @@ require.extensions['.txt'] = function (module, filename) {
 };
 
 function cssPropertiesParser(cssTxt, isDiff)  {
-  let regex = isDiff ? /(?:\+?.*(\.[^{, .]+)\s+(?:{|,))\n(?:.*;\n)*(?:\+ .*;)/gm : /(?:(\.[^.{ ,]+)\s*(?:{|,))/gm;
+  let regex = isDiff ? /(?:\+?.*(\.[^{,.]+)\s+(?:{|,))\n(?:(?:\s|[^.])*\n)*(?:\+ .*;)(?:\s|[^}])+}/gm : /(?:(\.[^.{ ,]+)\s*(?:{|,))/gm;
 
   let properties = [];
 
@@ -107,7 +107,7 @@ router.register('/compareCss', function(req, res) {
               currentText += `<div style="color: black; margin: 5px 10px;">${property}</div>`;
             }
           }
-          
+
           finalText += currentText;
 
           if (currentText !== '') {

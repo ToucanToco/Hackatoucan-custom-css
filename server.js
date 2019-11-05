@@ -85,39 +85,40 @@ router.register('/compareCss', function(req, res) {
   
   axios.all(smallApps.map((smallApp) => axios.get(`https://api-demo-staging.toucantoco.com/${smallApp.id}/assets/styles/variables`))).then((resp) =>
   {
+    let finalText = ``;
     resp.forEach((data, index) => {
       if (data.data && data.data.specific) {
-        console.log(smallApps[index].id)
-        smallAppsInfos.push({name: smallApps[index].id, properties: cssPropertiesParser(data.data.specific, false)});
+        let properties = cssPropertiesParser(data.data.specific, false);
+        
+        if (properties.length) {
+
+          let currentText = '';
+          for (let property of properties) {
+            if (diffPropsArray.some((diffProp) => diffProp === property)) {
+
+              if (finalText === ``) {
+                finalText = `This PR impacts:`;
+              }
+
+              if (currentText === '') {
+                currentText = `<div style="color: red; margin-bottom: 10px; padding: 20px;">${smallApps[index].id}`
+              }
+
+              currentText += `<div style="color: black; margin: 5px 10px;">${property}</div>`;
+            }
+          }
+          
+          finalText += currentText;
+
+          if (currentText !== '') {
+            finalText += '</div>';
+          }
+        }
       }
     })
 
-
-    let matchingProperties = [];
-
-    for (let smallAppInfos of smallAppsInfos) {
-      for (let smallAppCssProp of smallAppInfos.properties) {
-        if (diffPropsArray.some((diffProp) => diffProp === smallAppCssProp)) {
-          if (!matchingProperties[smallAppInfos.name]) {
-            matchingProperties[smallAppInfos.name] = [];
-          }
-          matchingProperties[smallAppInfos.name].push(smallAppCssProp);
-        }
-      }
-    }
-
-    let finalText = `This PR has no impact on any custom CSS (I Hope !)`;
-    if (Object.keys(matchingProperties).length > 0) {
-      finalText = `This PR impacts:<br/>`;
-
-
-      for (let [key, value] of Object.entries(matchingProperties)) {
-        finalText += `<div style="color: red; margin-bottom: 10px; padding: 20px;">${key}`
-        value.forEach((property) => {
-          finalText += `<div style="color: black; margin: 5px 10px;">${property}</div>`;
-        })
-        finalText += `</div>`;
-      }
+    if (finalText === ``) {
+      finalText = `This PR has no impact on any custom CSS (I Hope !)`;
     }
 
     res.writeHead(200, {'Content-Type': 'text/html'});

@@ -1,6 +1,12 @@
-var sys = require('sys');
-var http = require('http');
-var router = require('./router');
+let sys = require('sys');
+let http = require('http');
+let router = require('./router');
+let fs = require('fs');
+
+
+require.extensions['.txt'] = function (module, filename) {
+  module.exports = fs.readFileSync(filename, 'utf8');
+};
 
 // Handle your routes here, put static pages in ./public and they will server
 router.register('/', function(req, res) {
@@ -11,10 +17,10 @@ router.register('/', function(req, res) {
 
 // Handle your routes here, put static pages in ./public and they will server
 router.register('/payload', function(req, res) {
-
+  let diffText = require('./diff.txt');
 
   res.writeHead(200, {'Content-Type': 'text/plain'});
-  res.write('Hello Payload');
+  res.write(diffText);
   res.end();
 });
 

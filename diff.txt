@@ -1,0 +1,14 @@
+diff --git a/machin.css b/machin.css
+index 93b24fd..ad87416 100644
+--- a/machin.css
++++ b/machin.css
+@@ -4,6 +4,9 @@
+ .b {
+   background: yellow;
+ }
++.truc {
++  overflow: scroll;
++}
+ .c {
+   background: blue;
+ }

@@ -24,7 +24,7 @@ function cssPropertiesParser(cssTxt, isDiff)  {
     return properties;
   } else {
     let properties = [];
-    let cssRegex = /.*\.scss\n@@.+@@\n(\s*|[^/]*)diff/gm
+    let cssRegex = /.*(?:\.scss|\.css)\n@@.+@@\n(\s*|[^/]*)(?:diff|$)/gm
     regex = /(?:\+?.*(\.[^{,.]+)\s+(?:{|,))\n(?:(?:\s|[^.])*\n)*(?:\+ .*;)(?:\s|[^}])+}/gm
     while ((css = cssRegex.exec(cssTxt)) !== null) { 
       if (css && css[1]) {
@@ -115,7 +115,7 @@ router.register('/compareCss', function(req, res) {
               }
 
               if (currentText === '') {
-                currentText = `<a style="display: block; margin: 10px 5px;margin-top: 20px;" href="https://demo-staging.toucantoco.com/${smallApps[index].id}">${smallApps[index].id}</a>`
+                currentText = `<a style="display: block; margin: 10px 5px;margin-top: 20px;" href="https://demo-staging.toucantoco.com/${smallApps[index].id}" target="_blank" >${smallApps[index].id}</a>`
               }
 
               currentText += `<div style="color: black; margin: 5px 10px;">${property}</div>`;

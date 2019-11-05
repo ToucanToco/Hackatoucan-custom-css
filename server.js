@@ -11,15 +11,30 @@ require.extensions['.txt'] = function (module, filename) {
 };
 
 function cssPropertiesParser(cssTxt, isDiff)  {
-  let regex = isDiff ? /(?:\+?.*(\.[^{,.]+)\s+(?:{|,))\n(?:(?:\s|[^.])*\n)*(?:\+ .*;)(?:\s|[^}])+}/gm : /(?:(\.[^.{ ,]+)\s*(?:{|,))/gm;
+  let regex = undefined;
+  if (!isDiff) {
+    regex = /(?:(\.[^.{ ,]+)\s*(?:{|,))/gm
 
-  let properties = [];
-
-  while ((match = regex.exec(cssTxt)) !== null) {
-    properties.push(match[1]);
+    let properties = [];
+  
+    while ((match = regex.exec(cssTxt)) !== null) {
+      properties.push(match[1]);
+    }
+  
+    return properties;
+  } else {
+    let properties = [];
+    let cssRegex = /.*\.scss\n@@.+@@\n(\s*|[^/]*)diff/gm
+    regex = /(?:\+?.*(\.[^{,.]+)\s+(?:{|,))\n(?:(?:\s|[^.])*\n)*(?:\+ .*;)(?:\s|[^}])+}/gm
+    while ((css = cssRegex.exec(cssTxt)) !== null) { 
+      if (css && css[1]) {
+        while ((match = regex.exec(css[1])) !== null) {
+          properties.push(match[1]);
+        }
+      }
+    }
+    return properties;
   }
-
-  return properties;
 }
 
 // Handle your routes here, put static pages in ./public and they will server
@@ -79,7 +94,6 @@ router.register('/smallAppCustomCss', function(req, res) {
 router.register('/compareCss', function(req, res) {
   let smallApps = require('./smallApps.json');
   let diffText = require('./diff.txt');
-  let smallAppsInfos = [];
 
   let diffPropsArray = cssPropertiesParser(diffText, true)
   
@@ -101,7 +115,7 @@ router.register('/compareCss', function(req, res) {
               }
 
               if (currentText === '') {
-                currentText = `<div style="color: red; margin-bottom: 10px; padding: 20px;">${smallApps[index].id}`
+                currentText = `<a style="display: block; margin: 10px 5px;margin-top: 20px;" href="https://demo-staging.toucantoco.com/${smallApps[index].id}">${smallApps[index].id}</a>`
               }
 
               currentText += `<div style="color: black; margin: 5px 10px;">${property}</div>`;
@@ -109,10 +123,6 @@ router.register('/compareCss', function(req, res) {
           }
 
           finalText += currentText;
-
-          if (currentText !== '') {
-            finalText += '</div>';
-          }
         }
       }
     })

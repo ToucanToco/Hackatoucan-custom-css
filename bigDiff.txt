@@ -1,0 +1,802 @@
+diff --git a/app/assets/translations/tucana.json b/app/assets/translations/tucana.json
+index fda4a415bb..2aec1ce5dc 100644
+--- a/app/assets/translations/tucana.json
++++ b/app/assets/translations/tucana.json
+@@ -44,7 +44,8 @@
+       "reset": "Reinitialiser",
+       "save": "Sauvegarder",
+       "save_changes": "Sauvegarder",
+-      "warning": "Attention !"
++      "warning": "Attention !",
++      "question_mark": " ?"
+     },
+     "drop_zone": {
+       "message": "Ajouter un fichier source",
+@@ -245,7 +246,9 @@
+       "capture_chart_loading_msg": "Génération en cours...",
+       "capture_chart_email_sent": "Email envoyé",
+       "capture_chart_help": "Vous pouvez dessiner directement sur la capture d'écran",
+-      "share_link": "Lien de partage"
++      "share_link": "Lien de partage",
++      "comments_filter_on_current_view": "Filtrer les commentaires sur la vue courante",
++      "comments_navigation_confirmation_message": "Voulez-vous naviguer vers :"
+     },
+     "errors": {
+       "error_message": "<div class=\"error-first-word\">Désolé,</div>aucune donnée n'est disponible pour ce graphe",
+@@ -600,7 +603,8 @@
+       "reset": "Reset",
+       "save": "Save",
+       "save_changes": "Save changes",
+-      "warning": "Warning!"
++      "warning": "Warning!",
++      "question_mark": "?"
+     },
+     "drop_zone": {
+       "message": "Add a datasource",
+@@ -801,7 +805,9 @@
+       "capture_chart_loading_msg": "Generating screenshot ...",
+       "capture_chart_email_sent": "Email sent",
+       "capture_chart_help": "You can draw directly on the screenshot",
+-      "share_link": "Share link"
++      "share_link": "Share link",
++      "comments_filter_on_current_view": "Filter comments for current view",
++      "comments_navigation_confirmation_message": "Do you want to navigate to:"
+     },
+     "errors": {
+       "error_message": "<div class=\"error-first-word\">Sorry,</div>no data is available for this chart",
+@@ -1148,7 +1154,8 @@
+       "reset": "Reset",
+       "save": "Save",
+       "save_changes": "Save changes",
+-      "warning": "Warning!"
++      "warning": "Warning!",
++      "question_mark": " ?"
+     },
+     "drop_zone": {
+       "message": "Add a datasource",
+@@ -1349,7 +1356,9 @@
+       "capture_chart_loading_msg": "Generating screenshot ...",
+       "capture_chart_email_sent": "Email sent",
+       "capture_chart_help": "You can draw directly on the screenshot",
+-      "share_link": "Share link"
++      "share_link": "Share link",
++      "comments_filter_on_current_view": "Filter comments for current view",
++      "comments_navigation_confirmation_message": "Do you want to navigate to:"
+     },
+     "errors": {
+       "error_message": "<div class=\"error-first-word\">Sorry,</div>no data is available for this chart",
+diff --git a/app/scripts/small-app/component/comments/comment/index.coffee b/app/scripts/small-app/component/comments/comment/index.coffee
+index cd92cfff03..3e553be124 100644
+--- a/app/scripts/small-app/component/comments/comment/index.coffee
++++ b/app/scripts/small-app/component/comments/comment/index.coffee
+@@ -2,6 +2,7 @@ import getInitials from 'utils/get-initials'
+ import TcModal from 'utils/components/tc-modal'
+ 
+ import template from './template.vue.pug'
++import { APP_DATE_REQUESTER_ID, APP_REPORT_REQUESTER_ID } from 'small-app/state/app-requesters-ids'
+ 
+ Comment = template
+   name: 'comment'
+@@ -16,6 +17,9 @@ Comment = template
+ 
+   data: ->
+     isDeleteModalOpened: false
++    isNavigationModalOpen: false
++    navigateToValue: undefined
++    selectedRequesterId: undefined
+ 
+   computed:
+     author: ->
+@@ -37,12 +41,26 @@ Comment = template
+     isDeletable: ->
+       not _.isUndefined @comment?.deletion_key
+ 
++    context: ->
++      _.get(@comment, 'context')
++
++    dateRequesterId: -> APP_DATE_REQUESTER_ID
++    reportRequesterId: -> APP_REPORT_REQUESTER_ID
++
++    appDateDisplayed: ->
++      _.get(@context, "#{APP_DATE_REQUESTER_ID}.optionValue")
++
++    appReportDisplayed: ->
++      _.get(@context, "#{APP_REPORT_REQUESTER_ID}.optionValue")
++
+     t: -> @$store.getters.translateBatch [
+       'confirmation_modal.cancel',
+       'confirmation_modal.confirm',
+       'confirmation_modal.info',
+       'confirmation_modal.comment.title',
+       'confirmation_modal.comment.message'
++      'settings.comments_navigation_confirmation_message'
++      'common.question_mark'
+     ]
+ 
+   methods:
+@@ -53,5 +71,18 @@ Comment = template
+ 
+     openDeleteModal: -> @isDeleteModalOpened = true
+ 
++    openNavigationModal: (requesterId) ->
++      @navigateToValue = _.get(@context, "#{requesterId}.optionValue")
++      @selectedRequesterId = requesterId
++      @isNavigationModalOpen = true
++
++    closeNavigationModal: -> @isNavigationModalOpen = false
++
++    navigateToContext: (requesterId) ->
++      @$store.dispatch 'selectRequesterOption', {
++        id: requesterId
++        selectedOption: _.get(@context, "#{requesterId}.option")
++      }
++      .then => @closeNavigationModal()
+ 
+ export default Comment
+diff --git a/app/scripts/small-app/component/comments/comment/specs.coffee b/app/scripts/small-app/component/comments/comment/specs.coffee
+index 6e7f1421cf..62f5b38c16 100644
+--- a/app/scripts/small-app/component/comments/comment/specs.coffee
++++ b/app/scripts/small-app/component/comments/comment/specs.coffee
+@@ -4,6 +4,8 @@ import sinon from 'sinon'
+ 
+ import Comment from './'
+ import COMMENTS_DATA from '../fixtures/comments'
++import COMMENTS_WITH_CONTEXT_DATA from '../fixtures/comments-with-context'
++import { APP_DATE_REQUESTER_ID, APP_REPORT_REQUESTER_ID } from 'small-app/state/app-requesters-ids'
+ 
+ localVue = createLocalVue()
+ localVue.use(Vuex)
+@@ -61,6 +63,8 @@ describe 'comment', ->
+         'confirmation_modal.info',
+         'confirmation_modal.comment.title',
+         'confirmation_modal.comment.message'
++        'settings.comments_navigation_confirmation_message'
++        'common.question_mark'
+       ]
+ 
+     context 'when switching comment index', ->
+@@ -74,3 +78,81 @@ describe 'comment', ->
+       it 'should not allow deletion when deletion key is present', ->
+         @wrapper.findAll '.comment__delete'
+           .should.have.lengthOf 0
++
++
++
++describe 'comment with context', ->
++  beforeEach ->
++    @getStoryCommentStub = sinon.stub()
++    @deleteCommentStub = sinon.stub()
++    @translateBatchStub = sinon.stub()
++    @getStoryCommentStub.returns COMMENTS_WITH_CONTEXT_DATA[0]
++
++    @selectRequesterOptionStub = sinon.stub()
++
++    @store = new Vuex.Store({
++      getters:
++        storyComment: => @getStoryCommentStub
++        currentLocale: -> 'en'
++        currentSlideId: -> COMMENTS_WITH_CONTEXT_DATA[0].story_id
++        translateBatch: => @translateBatchStub.returns {}
++      actions:
++        deleteComment: ({}, index) => @deleteCommentStub index
++        selectRequesterOption: => @selectRequesterOptionStub arguments[1]
++    })
++
++    @createComment = (props = {index: 0}) =>
++      @wrapper = shallowMount Comment,
++        propsData: props
++        localVue: localVue
++        store: @store
++
++  describe 'displayed context', ->
++    beforeEach ->
++      @createComment()
++
++    afterEach ->
++      @wrapper.destroy()
++
++    it 'should display the app context info', ->
++      @wrapper.find('.comment__context').isVisible().should.be.true
++
++    it 'should display the app report', ->
++      @wrapper.find('.comment-context--report').text().should.eql 'Europe'
++
++    it 'should display the app date', ->
++      @wrapper.find('.comment-context--date').text().should.eql 'January'
++
++  describe 'navigation to context', ->
++    beforeEach ->
++      @createComment()
++
++    afterEach ->
++      @wrapper.destroy()
++
++    context 'when clicking on a context button', ->
++      beforeEach ->
++        @wrapper.find('.comment-context--report').trigger 'click'
++
++      it 'should open the navigation modal on click', ->
++        @wrapper.find('.comment-navigation-modal').isVisible().should.be.true
++
++      it 'should display a message about the selected view', ->
++        @wrapper.find('.comment-navigation-modal .comment-navigation-value').text().should.eql("Europe")
++
++      it 'should select the report requester option when confirming', ->
++        @wrapper.find('.comment-navigation-modal .tc-modal__action--primary').trigger 'click'
++        @selectRequesterOptionStub.should.have.been.calledOnceWith({
++          id: APP_REPORT_REQUESTER_ID
++          selectedOption: COMMENTS_WITH_CONTEXT_DATA[0].context[APP_REPORT_REQUESTER_ID].option
++        })
++
++      it 'should close the modal when confirming', ->
++        @wrapper.find('.comment-navigation-modal .tc-modal__action--primary').trigger 'click'
++        @wrapper.vm.$nextTick().then =>
++          @wrapper.find('.comment-navigation-modal').exists().should.be.false
++
++      it 'should close the modal without navigating when canceling', ->
++        @wrapper.find('.comment-navigation-modal .tc-modal__action--secondary').trigger 'click'
++        @selectRequesterOptionStub.should.not.have.been.called
++        @wrapper.find('.comment-navigation-modal').exists().should.be.false
+diff --git a/app/scripts/small-app/component/comments/comment/styles.scss b/app/scripts/small-app/component/comments/comment/styles.scss
+index c812ecaaaf..e6bcbcacc0 100644
+--- a/app/scripts/small-app/component/comments/comment/styles.scss
++++ b/app/scripts/small-app/component/comments/comment/styles.scss
+@@ -51,3 +51,43 @@
+   margin-bottom: -4px;
+   margin-top: 6px;
+ }
++
++.comment__context {
++  margin-top: 10px;
++  text-align: right;
++}
++
++.comment-context {
++  display: inline-block;
++  margin-right: 5px;
++  font-size: 0.9em;
++  padding: 5px 10px;
++  border: none;
++  border-radius: 15px;
++  text-transform: uppercase;
++  font-family: "Montserrat";
++}
++
++.comment-navigation-modal .tc-modal__text {
++  display: inline;
++}
++
++@include respond-to(phone) {
++  .comment-navigation-modal .tc-modal__section {
++    text-align: center;
++  }
++  .comment-navigation-modal .tc-modal__title {
++    font-size: 16px;
++  }
++
++}
++.comment-navigation-modal .comment-navigation-value {
++  margin-right: 5px;
++  margin-left: 5px;
++  font-size: 0.9em;
++  padding: 5px 10px;
++  border: none;
++  border-radius: 15px;
++  text-transform: uppercase;
++  font-family: "Montserrat";
++}
+diff --git a/app/scripts/small-app/component/comments/comment/template.vue.pug b/app/scripts/small-app/component/comments/comment/template.vue.pug
+index a76c4294f9..ea925c3513 100644
+--- a/app/scripts/small-app/component/comments/comment/template.vue.pug
++++ b/app/scripts/small-app/component/comments/comment/template.vue.pug
+@@ -9,6 +9,13 @@
+       @click="openDeleteModal()"
+     )
+   .comment__text {{ content }}
++  .comment__context(v-if="context")
++    button.comment-context.comment-context--report(
++      @click="openNavigationModal(reportRequesterId)"
++    ) {{ appReportDisplayed }}
++    button.comment-context.comment-context--date(
++      @click="openNavigationModal(dateRequesterId)"
++    ) {{ appDateDisplayed }}
+   tc-modal(
+     v-if="isDeleteModalOpened"
+     @closed="closeDeleteModal()"
+@@ -25,3 +32,20 @@
+       .tc-modal__action.tc-modal__action--primary(
+         @click="deleteComment()"
+       ) {{ t['confirmation_modal.confirm'] }}
++  tc-modal.comment-navigation-modal(
++    v-if="isNavigationModalOpen"
++    @closed="closeNavigationModal()"
++  )
++    .tc-modal__header
++      .tc-modal__title Switch to selected view
++    .tc-modal__section
++      .tc-modal__text {{ t['settings.comments_navigation_confirmation_message'] }}
++      .tc-modal__text.comment-navigation-value {{ navigateToValue }}
++      .tc-modal__text {{ t['common.question_mark'] }}
++    .tc-modal__footer
++      .tc-modal__action.tc-modal__action--secondary(
++        @click="closeNavigationModal()"
++      ) {{ t['confirmation_modal.cancel'] }}
++      .tc-modal__action.tc-modal__action--primary(
++        @click="navigateToContext(selectedRequesterId)"
++      ) {{ t['confirmation_modal.confirm'] }}
+diff --git a/app/scripts/small-app/component/comments/fixtures/comments-with-context.json b/app/scripts/small-app/component/comments/fixtures/comments-with-context.json
+new file mode 100644
+index 0000000000..2547705165
+--- /dev/null
++++ b/app/scripts/small-app/component/comments/fixtures/comments-with-context.json
+@@ -0,0 +1,101 @@
++[{
++  "author": "Oscar François de Jarjayes",
++  "date": {
++    "$date": -6311952000000
++  },
++  "deletion_key": "6311952",
++  "slide_id": "story-01",
++  "story_name": "Story 01",
++  "text": "Je suis capitaine de la garde.",
++  "context": {
++    "APP_REPORT_REQUESTER_ID": {
++      "option": {
++        "country": "Europe",
++        "domain": "waterfall_drill",
++        "my_type": "parent",
++        "nb_movies": -20,
++        "order": 2,
++        "region": "Europe",
++        "revenue": -50,
++        "var": -0.04,
++        "year": 2017
++      },
++      "optionValue": "Europe"
++    },
++    "APP_DATE_REQUESTER_ID": {
++      "option": {
++        "domain": "dates",
++        "groups": "month",
++        "report_date": "January",
++        "report_date_N1": "December"
++      },
++      "optionValue": "January"
++    }
++  }
++}, {
++  "author": "Marie-Antoinette d'Autriche",
++  "date": {
++    "$date": -6299683200000
++  },
++  "slide_id": "story-01",
++  "story_name": "Story 01",
++  "text": "Je suis reine...",
++  "context": {
++    "APP_REPORT_REQUESTER_ID": {
++      "option": {
++        "country": "Vietnam",
++        "domain": "waterfall_drill",
++        "my_type": "parent",
++        "nb_movies": -20,
++        "order": 2,
++        "region": "Asia",
++        "revenue": -50,
++        "var": -0.04,
++        "year": 2017
++      },
++      "optionValue": "Vietnam"
++    },
++    "APP_DATE_REQUESTER_ID": {
++      "option": {
++        "domain": "dates",
++        "groups": "month",
++        "report_date": "January",
++        "report_date_N1": "December"
++      },
++      "optionValue": "January"
++    }
++  }
++}, {
++  "author": "André Grandier",
++  "date": {
++    "$date": -5694969600000
++  },
++  "slide_id": "story-01",
++  "story_name": "Story 01",
++  "text": "OSCAAAAAAAAAAAAAR !",
++  "context": {
++    "APP_REPORT_REQUESTER_ID": {
++      "option": {
++        "country": "France",
++        "domain": "waterfall_drill",
++        "my_type": "parent",
++        "nb_movies": -20,
++        "order": 2,
++        "region": "Europe",
++        "revenue": -50,
++        "var": -0.04,
++        "year": 2017
++      },
++      "optionValue": "France"
++    },
++    "APP_DATE_REQUESTER_ID": {
++      "option": {
++        "domain": "dates",
++        "groups": "month",
++        "report_date": "March",
++        "report_date_N1": "February"
++      },
++      "optionValue": "March"
++    }
++  }
++}]
+diff --git a/app/scripts/small-app/component/comments/index.coffee b/app/scripts/small-app/component/comments/index.coffee
+index a1414bacf9..980780b8cf 100644
+--- a/app/scripts/small-app/component/comments/index.coffee
++++ b/app/scripts/small-app/component/comments/index.coffee
+@@ -4,6 +4,7 @@ import template from './template.vue.pug'
+ 
+ import Comment from './comment'
+ import Analytics from 'analytics'
++import { APP_DATE_REQUESTER_ID, APP_REPORT_REQUESTER_ID } from 'small-app/state/app-requesters-ids'
+ 
+ Comments = template
+   name: 'comments'
+@@ -12,6 +13,7 @@ Comments = template
+ 
+   data: ->
+     commentFieldValue: ''
++    shouldFilterOnCurrentView: false
+ 
+   computed:
+     comments: ->
+@@ -20,32 +22,86 @@ Comments = template
+     orderedCommentsIndexes: ->
+       _.chain @comments
+         .map (comment, commentIndex) ->
++          body: comment
+           date: comment.date.$date
+           index: commentIndex
++        .filter (comment) =>
++          return true if @isLegacyHome
++          return true if _.isUndefined @currentViewFilters
++          return @isCommentFromCurrentView comment.body
+         .orderBy 'date', 'asc'
+         .map 'index'
+         .value()
+ 
+     t: -> @$store.getters.translateBatch [
+       'settings.comment_save'
++      'settings.comments_filter_on_current_view'
+     ]
+ 
++    isLegacyHome: -> @$store.getters.isLegacyHome
++
++    reportSelectedOption: ->
++      return @$store.getters.requesterSelectedOption APP_REPORT_REQUESTER_ID
++
++    dateSelectedOption: ->
++      return @$store.getters.requesterSelectedOption APP_DATE_REQUESTER_ID
++
++    reportSelectedOptionValue: ->
++      return @$store.getters.requesterSelectedOptionValue APP_REPORT_REQUESTER_ID
++
++    dateSelectedOptionValue: ->
++      return @$store.getters.requesterSelectedOptionValue APP_DATE_REQUESTER_ID
++
++    currentAppRequesterContext: ->
++      if @isLegacyHome
++        return
++      return {
++        "#{APP_REPORT_REQUESTER_ID}":
++          option: @reportSelectedOption
++          optionValue: @reportSelectedOptionValue
++        "#{APP_DATE_REQUESTER_ID}":
++          option: @dateSelectedOption
++          optionValue: @dateSelectedOptionValue
++      }
++
++    currentViewFilters: ->
++      "#{APP_REPORT_REQUESTER_ID}": @reportSelectedOptionValue
++      "#{APP_DATE_REQUESTER_ID}": @dateSelectedOptionValue
++
++
+   mounted: ->
+     @fetchComments()
+ 
+   methods:
+-    createComment: ->
++    unfilterOnCurrentView: ->
++      @shouldFilterOnCurrentView = false
++
++    filterOnCurrentView: ->
++      @shouldFilterOnCurrentView = true
++
++    isCommentFromCurrentView: (comment) ->
++      return true unless @shouldFilterOnCurrentView
++      for filterKey in Object.keys(@currentViewFilters)
++        unless _.get(comment, "context[#{filterKey}].optionValue") is @currentViewFilters[filterKey]
++          return false
++      return true
++
++    sendAnalyticsEvent: ->
+       event =
+         hitType: 'event'
+         eventCategory: 'Settings'
+         eventAction: "add chat message"
+         eventLabel: "#{@$store.getters.smallAppId}"
+       Analytics.sendEvent event, @$store.getters.smallAppId
++
++    createComment: ->
++      @sendAnalyticsEvent()
+       unless _.isEmpty @commentFieldValue
+         @$store.dispatch 'createComment',
+           text: @commentFieldValue
+           report_id: @$store.getters.currentReportId
+           story_name: @$store.getters.currentSlide.title
++          context: @currentAppRequesterContext
+         .then => @commentFieldValue = ''
+ 
+     fetchComments: ->
+diff --git a/app/scripts/small-app/component/comments/specs.coffee b/app/scripts/small-app/component/comments/specs.coffee
+index e0a22657d4..2e7fd26c54 100644
+--- a/app/scripts/small-app/component/comments/specs.coffee
++++ b/app/scripts/small-app/component/comments/specs.coffee
+@@ -4,6 +4,7 @@ import sinon from 'sinon'
+ 
+ import Comments from './'
+ import COMMENTS_DATA from './fixtures/comments'
++import COMMENTS_WITH_CONTEXT_DATA from './fixtures/comments-with-context'
+ import Analytics from 'analytics'
+ 
+ localVue = createLocalVue()
+@@ -28,6 +29,7 @@ describe 'Comments', ->
+           currentReportId: -> _.get report, 'id'
+           currentSlide: -> title: COMMENTS_DATA[0].story_name
+           translateBatch: => @translateBatchStub
++          isLegacyHome: -> true
+         actions:
+           getStoryComments: => @getStoryCommentsStub()
+           createComment: => @createCommentStub arguments[1]
+@@ -57,6 +59,7 @@ describe 'Comments', ->
+     it 'should translate the ui', ->
+       @translateBatchStub.should.have.been.calledWith [
+         'settings.comment_save'
++        'settings.comments_filter_on_current_view'
+       ]
+ 
+     it 'should fetch comments', ->
+@@ -77,6 +80,9 @@ describe 'Comments', ->
+     afterEach ->
+       @wrapper.destroy()
+ 
++    it 'should not have a button to filter the comments on the current view in legacy mode', ->
++      @wrapper.find('.comments__filter-current-view').exists().should.be.false
++
+     it 'should display the right number of comments', ->
+       @wrapper.findAll 'comment-stub'
+       .should.have.lengthOf 2
+@@ -95,6 +101,7 @@ describe 'Comments', ->
+           text: 'Toto'
+           report_id: COMMENTS_DATA[0].report_id
+           story_name: COMMENTS_DATA[0].story_name
++          context: undefined
+         }
+ 
+   context 'with unordered comments', ->
+@@ -128,4 +135,128 @@ describe 'Comments', ->
+         text: 'Comment with no report'
+         report_id: undefined
+         story_name: COMMENTS_DATA[0].story_name
++        context: undefined
+       }
++
++describe 'Comments with context (new home mode)', ->
++  beforeEach ->
++    @storyCommentsGetterStub = sinon.stub()
++    @getStoryCommentsStub = sinon.stub()
++    @storyCommentsGetterStub.returns COMMENTS_WITH_CONTEXT_DATA
++    @createCommentStub = sinon.stub()
++    @translateBatchStub = sinon.stub()
++    @translateBatchStub.returns 'settings.comment_save': 'translated text'
++    @sendEventStub = sinon.stub Analytics, 'sendEvent'
++    @defaultReport = id: COMMENTS_DATA[0].report_id
++
++    # Requesters
++    @requesterSelectedOptionStub = sinon.stub()
++    @requesterSelectedOptionStub.withArgs('APP_DATE_REQUESTER_ID').returns(
++      COMMENTS_WITH_CONTEXT_DATA[1].context['APP_DATE_REQUESTER_ID'].option
++    )
++    @requesterSelectedOptionStub.withArgs('APP_REPORT_REQUESTER_ID').returns(
++      COMMENTS_WITH_CONTEXT_DATA[1].context['APP_REPORT_REQUESTER_ID'].option
++    )
++
++    @requesterSelectedOptionValueStub = sinon.stub()
++    @requesterSelectedOptionValueStub.withArgs('APP_DATE_REQUESTER_ID').returns(
++      COMMENTS_WITH_CONTEXT_DATA[1].context['APP_DATE_REQUESTER_ID'].optionValue
++    )
++    @requesterSelectedOptionValueStub.withArgs('APP_REPORT_REQUESTER_ID').returns(
++      COMMENTS_WITH_CONTEXT_DATA[1].context['APP_REPORT_REQUESTER_ID'].optionValue
++    )
++
++    @createComments = =>
++
++      @store = new Vuex.Store({
++        getters:
++          storyComments: => @storyCommentsGetterStub
++          currentSlideId: -> COMMENTS_WITH_CONTEXT_DATA[1].slide_id
++          currentReport: -> { country: 'Vietnam' }
++          currentReportId: -> 'Vietnam'
++          currentSlide: -> title: COMMENTS_WITH_CONTEXT_DATA[1].story_name
++          translateBatch: => @translateBatchStub
++          requesterSelectedOption: => @requesterSelectedOptionStub
++          requesterSelectedOptionValue: => @requesterSelectedOptionValueStub
++          isLegacyHome: -> false
++        actions:
++          getStoryComments: => @getStoryCommentsStub()
++          createComment: => @createCommentStub arguments[1]
++      })
++      @wrapper = shallowMount Comments,
++        localVue: localVue
++        store: @store
++
++  afterEach ->
++    @storyCommentsGetterStub.reset()
++    @createCommentStub.reset()
++    @getStoryCommentsStub.reset()
++    @sendEventStub.restore()
++    @requesterSelectedOptionStub.reset()
++    @requesterSelectedOptionValueStub.reset()
++
++  describe 'Create a comment with context', ->
++    beforeEach ->
++      @createComments()
++
++    afterEach ->
++      @wrapper.destroy()
++
++    it 'should create a comment with context', ->
++      @wrapper.find('.comments__field').setValue 'New comment with context'
++      @wrapper.find('.comments__submit').trigger 'click'
++
++      @createCommentStub.should.have.been.calledOnceWith({
++        text: 'New comment with context'
++        report_id: 'Vietnam'
++        story_name: COMMENTS_WITH_CONTEXT_DATA[1].story_name
++        context: COMMENTS_WITH_CONTEXT_DATA[1].context
++      })
++
++  describe 'conditional display', ->
++    beforeEach ->
++      @createComments()
++
++    afterEach ->
++      @wrapper.destroy()
++
++    describe 'Filter on current view button', ->
++      it 'should have a button to filter the comments on the current view', ->
++        @wrapper.find('.comments__filter-current-view').isVisible().should.be.true
++
++      it 'should not filter the comments by default', ->
++        @wrapper.findAll('comment-stub').length.should.eql 3
++
++      it 'should not show the current view info container', ->
++        @wrapper.find('.comments__unfilter-current-view').isVisible().should.be.false
++
++      context 'when filtering', ->
++        beforeEach ->
++          @wrapper.find('.comments__filter-current-view').trigger 'click'
++
++        it 'should filter the comments depending on the current view when clicked', ->
++          @wrapper.findAll('comment-stub').length.should.eql 1
++
++        it 'should keep the correct index', ->
++          @wrapper.vm.orderedCommentsIndexes.should.eql [1]
++
++        it 'should display the current view parameters', ->
++          @wrapper.find('.comments__unfilter-current-view').text().should.contain 'Vietnam'
++          @wrapper.find('.comments__unfilter-current-view').text().should.contain 'January'
++
++        it 'should not display the filter button anymore', ->
++          @wrapper.find('.comments__filter-current-view').isVisible().should.be.false
++
++      context 'when unfiltering', ->
++        beforeEach ->
++          @wrapper.find('.comments__filter-current-view').trigger 'click'
++          @wrapper.find('.comments__unfilter-current-view').trigger 'click'
++
++        it 'should unfilter the comments', ->
++          @wrapper.findAll('comment-stub').length.should.eql 3
++
++        it 'should not display the current view parameters anymore', ->
++          @wrapper.find('.comments__unfilter-current-view').isVisible().should.be.false
++
++        it 'should display the filter button again', ->
++          @wrapper.find('.comments__filter-current-view').isVisible().should.be.true
+diff --git a/app/scripts/small-app/component/comments/styles.scss b/app/scripts/small-app/component/comments/styles.scss
+index 1d14a2772d..951727052b 100644
+--- a/app/scripts/small-app/component/comments/styles.scss
++++ b/app/scripts/small-app/component/comments/styles.scss
+@@ -51,4 +51,41 @@ settings-panel > .settings-content .settings-tab-content[data-active-tab="commen
+   text-transform: uppercase;
+ }
+ 
++.comments__context-filters {
++  display: inline-block;
++  text-align: center;
++  padding: 5px;
++  box-shadow: 0 -5px 12px 0 rgba(50, 50, 50, .3);
++}
++
++.comments__filter-current-view > span {
++  margin-right: 5px;
++  font-size: 0.9em;
++}
++.comments__filter-current-view {
++  padding: 5px 10px;
++  border: none;
++  border-radius: 15px;
++  text-transform: uppercase;
++  font-family: "Montserrat";
++}
++
++.comments__unfilter-current-view {
++  border: none;
++  background: transparent;
++  width: 100%;
++  text-align: end;
++}
++
++.comments__current-view-option {
++  display: inline-block;
++  margin-right: 5px;
++  font-size: 0.9em;
++  padding: 5px 10px;
++  border: none;
++  border-radius: 15px;
++  text-transform: uppercase;
++  font-family: "Montserrat";
++}
++
+ @import 'comment/styles'
+diff --git a/app/scripts/small-app/component/comments/template.vue.pug b/app/scripts/small-app/component/comments/template.vue.pug
+index 4b78792da8..556df58423 100644
+--- a/app/scripts/small-app/component/comments/template.vue.pug
++++ b/app/scripts/small-app/component/comments/template.vue.pug
+@@ -1,4 +1,17 @@
+ .comments
++  .comments__context-filters(v-if="!isLegacyHome")
++    button.comments__filter-current-view(
++      @click="filterOnCurrentView()"
++      v-show="!shouldFilterOnCurrentView"
++    )
++      span {{ t['settings.comments_filter_on_current_view'] }}
++      i.fal.fa-filter
++    button.comments__unfilter-current-view(
++      @click="unfilterOnCurrentView()"
++      v-show="shouldFilterOnCurrentView"
++    )
++      .comments__current-view-option(v-for="option in currentViewFilters") {{ option }}
++      .comments__current-view-option.comments__current-view-option--close x
+   .comments__list
+     comment(
+       v-for="orderedCommentIndex in orderedCommentsIndexes"
+@@ -11,4 +24,3 @@
+     button.comments__submit(
+       @click="createComment()"
+     ) {{ t['settings.comment_save'] }}
+-
+diff --git a/app/scripts/small-app/state/index.coffee b/app/scripts/small-app/state/index.coffee
+index 9fdc1b4058..fc5b0e46ba 100644
+--- a/app/scripts/small-app/state/index.coffee
++++ b/app/scripts/small-app/state/index.coffee
+@@ -393,6 +393,8 @@ smallAppModule = (smallAppId) ->
+     currentDashboard: (state) -> state.legacyDashboard
+ 
+     # Retrocompatibility between old and new home
++    isLegacyHome: (state) -> state.legacyReport isnt null
++
+     currentReport: (state, getters) ->
+       if _.includes getters.availableRequesters, APP_REPORT_REQUESTER_ID
+         getters.requesterSelectedOption APP_REPORT_REQUESTER_ID
